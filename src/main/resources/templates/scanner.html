@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code Scanner</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            width: 80%;
+            max-width: 800px;
+        }
+        #cameraPreview {
+            width: 100%;
+            max-height: 500px;
+            background-color: #000;
+            margin: 1rem 0;
+            display: none;
+        }
+        #result {
+            margin: 1rem 0;
+            padding: 1rem;
+            border-radius: 4px;
+        }
+        button {
+            padding: 0.8rem 1.5rem;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 0.5rem;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button#stopButton {
+            background-color: #f44336;
+        }
+        button#stopButton:hover {
+            background-color: #d32f2f;
+        }
+        .error {
+            color: red;
+            margin-top: 1rem;
+        }
+        .button-group {
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>QR Code Scanner</h1>
+        <p>Click the button below to start scanning QR codes with your webcam.</p>
+        
+        <div class="button-group">
+            <button id="scanButton">Scan QR Code</button>
+            <button id="stopButton" style="display: none;">Stop Camera</button>
+        </div>
+        
+        <video id="cameraPreview" playsinline></video>
+        
+        <div id="result"></div>
+        <div th:if="${error}" class="error" th:text="${error}"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <script>
+        const scanButton = document.getElementById('scanButton');
+        const stopButton = document.getElementById('stopButton');
+        const cameraPreview = document.getElementById('cameraPreview');
+        const resultDiv = document.getElementById('result');
+        
+        let stream = null;
+        let scanning = false;
+        
+        scanButton.addEventListener('click', async () => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment" } 
+                });
+                
+                cameraPreview.srcObject = stream;
+                cameraPreview.style.display = 'block';
+                cameraPreview.play();
+                
+                scanButton.style.display = 'none';
+                stopButton.style.display = 'inline-block';
+                
+                startScanning();
+            } catch (err) {
+                resultDiv.innerHTML = `<div class="error">Error: ${err.message}</div>`;
+                console.error(err);
+            }
+        });
+        
+        stopButton.addEventListener('click', () => {
+            stopCamera();
+        });
+        
+        function startScanning() {
+            scanning = true;
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            
+            function scanFrame() {
+                if (!scanning) return;
+                
+                if (cameraPreview.readyState === cameraPreview.HAVE_ENOUGH_DATA) {
+                    canvas.width = cameraPreview.videoWidth;
+                    canvas.height = cameraPreview.videoHeight;
+                    context.drawImage(cameraPreview, 0, 0, canvas.width, canvas.height);
+                    
+                    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                        inversionAttempts: "dontInvert",
+                    });
+                    
+                    if (code) {
+                        resultDiv.innerHTML = `<div>QR Code detected: <strong>${code.data}</strong></div>`;
+                        if (code.data.startsWith('http')) {
+                            setTimeout(() => {
+                                window.location.href = code.data;
+                            }, 1000);
+                        }
+                    }
+                }
+                
+                requestAnimationFrame(scanFrame);
+            }
+            
+            scanFrame();
+        }
+        
+        function stopCamera() {
+            scanning = false;
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            cameraPreview.srcObject = null;
+            cameraPreview.style.display = 'none';
+            scanButton.style.display = 'inline-block';
+            stopButton.style.display = 'none';
+            resultDiv.innerHTML = '';
+        }
+        
+        // Clean up when page unloads
+        window.addEventListener('beforeunload', stopCamera);
+    </script>
+</body>
+</html>
